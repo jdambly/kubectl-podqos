@@ -74,7 +74,7 @@ func getKubeConfig() *string {
 func (c *ContainerData) getQosClass() PodQosPolicy {
 
 	if c.Limits.CPU.MilliValue() == 0 && c.Requests.CPU.MilliValue() == 0 {
-		return Burstable
+		return BestEffort
 	}
 	if c.Limits.CPU.MilliValue() == c.Requests.CPU.MilliValue() {
 		return Guaranteed
@@ -82,7 +82,7 @@ func (c *ContainerData) getQosClass() PodQosPolicy {
 	if c.Requests.CPU.MilliValue() < c.Limits.CPU.MilliValue(){
 		return Burstable
 	}
-	return Burstable
+	return BestEffort
 }
 
 func main() {
