@@ -38,7 +38,7 @@ type ContainerData struct {
 	Limits ResourceData
 	Requests ResourceData
 }
-// PodData holds pod infromation, and list of containers in pod
+// PodData holds pod information, and list of containers in pod
 type PodData struct {
 	PodName string
 	NameSpace string
@@ -47,7 +47,7 @@ type PodData struct {
 
 // PodQosPolicy describes the QosClass for each container
 // see: https://kubernetes.io/docs/tasks/administer-cluster/cpu-management-policies/
-// for more inforamtion
+// for more information
 type PodQosPolicy  string
 
 const (
@@ -86,14 +86,13 @@ func (c *ContainerData) getQosClass() PodQosPolicy {
 }
 
 func main() {
-	var namespaceFlag = flag.String("namespace", "", "sets the namespace for the api request")
-	flag.StringVar(namespaceFlag, "n", "", "sets the namespace for the api request")
+	var namespaceFlag = flag.String("n", "", "sets the namespace for the api request")
 	allNameSpaces := flag.Bool("A", false, "Query all namespaces")
 	flag.Parse()
 	clientCfg, _ := clientcmd.NewDefaultClientConfigLoadingRules().Load()
 	namespace := clientCfg.Contexts[clientCfg.CurrentContext].Namespace
 
-	// if the flag is set return the vaule given as a flag
+	// if the flag is set return the value given as a flag
 	if *namespaceFlag != "" {
 		namespace = *namespaceFlag
 	}
@@ -127,17 +126,14 @@ func main() {
 	for _, pod := range pods.Items { // don't forget _ is there to ignore the index of the list
 		var containers []ContainerData
 		for _, container := range pod.Spec.Containers {
-			cpuLimit := container.Resources.Limits.Cpu()
-			cpuRequest := container.Resources.Requests.Cpu()
-
 			containers = append(containers, ContainerData{
 				Name: container.Name,
 				Limits: ResourceData{
-					CPU: cpuLimit,
+					CPU: container.Resources.Limits.Cpu(),
 					Memory: container.Resources.Limits.Memory(),
 				},
 				Requests: ResourceData{
-					CPU: cpuRequest,
+					CPU: container.Resources.Requests.Cpu(),
 					Memory: container.Resources.Requests.Memory(),
 				},
 
