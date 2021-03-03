@@ -98,16 +98,17 @@ func main() {
 	// loop through the pods, and for each pod get the resources
 	for _, pod := range pods.Items { // don't forget _ is there to ignore the index of the list
 		var containers []ContainerData
-		for _, container := range pod.Spec.InitContainers {
+		for _, container := range pod.Spec.Containers {
+			fmt.Printf("%+v\n", container)
 			containers = append(containers, ContainerData{
 				Name: container.Name,
 				Limits: ResourceData{
-					CPU: container.Limits.Cpu(),
-					Memory: container.Limits.Memory(),
+					CPU: container.Resources.Limits.Cpu(),
+					Memory: container.Resources.Limits.Memory(),
 				},
 				Requests: ResourceData{
-					CPU: container.Requests.Cpu(),
-					Memory: container.Requests.Memory(),
+					CPU: container.Resources.Requests.Cpu(),
+					Memory: container.Resources.Requests.Memory(),
 				},
 
 			})
@@ -118,8 +119,9 @@ func main() {
 			Containers: containers,
 		})
 	}
+	fmt.Printf("%+v\n", podData)
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAMESPACE\tPOD NAME\tCPUL\tCPUR")
+	fmt.Fprintln(tw, "NAMESPACE\tPOD NAME\tCONTAINER")
 	for _, v := range podData {
 		for _, c := range v.Containers {
 			fmt.Fprintln(tw, strings.Join([]string{v.NameSpace, v.PodName, c.Name}, "\t"))
