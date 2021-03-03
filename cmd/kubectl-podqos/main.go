@@ -21,26 +21,45 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
-type ResourceData struct {
-	CPU string
-	Memory string
-}
 
+// ResourceData containts CPU/Memory quantity
+type ResourceData struct {
+	CPU *resource.Quantity
+	Memory *resource.Quantity
+}
+// ContainerData holds container information
 type ContainerData struct {
 	Name string
 	Limits ResourceData
 	Requests ResourceData
 }
-
+// PodData holds pod infromation, and list of containers in pod
 type PodData struct {
 	PodName string
 	NameSpace string
 	Containers []ContainerData
 }
+
+// PodQosPolicy describes the QosClass for each container
+// see: https://kubernetes.io/docs/tasks/administer-cluster/cpu-management-policies/
+// for more inforamtion
+type PodQosPolicy  string
+
+const (
+	// BestEffort class when no resource requests or limits are specified.
+	BestEffort PodQosPolicy = "BestEffort"
+
+	// Burstable class when requests are less then limits
+	Burstable PodQosPolicy = "Burstable"
+
+	// Guaranteed class when requests are equal to limits
+	Guaranteed PodQosPolicy = "Guaranteed"
+)
 
 // check if the kubeconfig is set, if not use default
 func getKubeConfig() *string {
@@ -52,32 +71,41 @@ func getKubeConfig() *string {
 	return &env
 }
 
-// get the namespace for the api call request
-func getNamespace(nameSpace string) string {
-	// if the flag is set return the vaule given as a flag
-	if *namespaceFlag != "" {
-		return string(*namespaceFlag)
+func (c *ContainerData) getQosClass() PodQosPolicy {
+
+	if c.Limits.CPU.MilliValue() == 0 && c.Requests.CPU.MilliValue() == 0 {
+		return Burstable
 	}
-
-	if nameSpace == "" {
-		return "default"
+	if c.Limits.CPU.MilliValue() == c.Requests.CPU.MilliValue() {
+		return Guaranteed
 	}
-	return nameSpace
-}
-
-
-var namespaceFlag = flag.String("namespace", "", "sets the namespace for the api request")
-
-func init(){
-	flag.StringVar(namespaceFlag, "n", "", "sets the namespace for the api request")
-
+	if c.Requests.CPU.MilliValue() < c.Limits.CPU.MilliValue(){
+		return Burstable
+	}
+	return Burstable
 }
 
 func main() {
+	var namespaceFlag = flag.String("namespace", "", "sets the namespace for the api request")
+	flag.StringVar(namespaceFlag, "n", "", "sets the namespace for the api request")
+	allNameSpaces := flag.Bool("A", false, "Query all namespaces")
 	flag.Parse()
-
 	clientCfg, _ := clientcmd.NewDefaultClientConfigLoadingRules().Load()
-	nameSpace := getNamespace(clientCfg.Contexts[clientCfg.CurrentContext].Namespace)
+	namespace := clientCfg.Contexts[clientCfg.CurrentContext].Namespace
+
+	// if the flag is set return the vaule given as a flag
+	if *namespaceFlag != "" {
+		namespace = *namespaceFlag
+	}
+
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// if the -A flag is set use empty string
+	if *allNameSpaces {
+		namespace = ""
+	}
 
 	// use the current context in kubeconfig
 	config, err := clientcmd.BuildConfigFromFlags("", *getKubeConfig())
@@ -90,7 +118,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	pods, err := clientset.CoreV1().Pods(nameSpace).List(context.TODO(), metav1.ListOptions{})
+	pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -99,15 +127,17 @@ func main() {
 	for _, pod := range pods.Items { // don't forget _ is there to ignore the index of the list
 		var containers []ContainerData
 		for _, container := range pod.Spec.Containers {
-			fmt.Printf("%+v\n", container)
+			cpuLimit := container.Resources.Limits.Cpu()
+			cpuRequest := container.Resources.Requests.Cpu()
+
 			containers = append(containers, ContainerData{
 				Name: container.Name,
 				Limits: ResourceData{
-					CPU: container.Resources.Limits.Cpu(),
+					CPU: cpuLimit,
 					Memory: container.Resources.Limits.Memory(),
 				},
 				Requests: ResourceData{
-					CPU: container.Resources.Requests.Cpu(),
+					CPU: cpuRequest,
 					Memory: container.Resources.Requests.Memory(),
 				},
 
@@ -115,16 +145,15 @@ func main() {
 		}
 		podData = append(podData, PodData{
 			PodName: pod.Name,
-			NameSpace: nameSpace,
+			NameSpace: pod.Namespace,
 			Containers: containers,
 		})
 	}
-	fmt.Printf("%+v\n", podData)
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAMESPACE\tPOD NAME\tCONTAINER")
+	fmt.Fprintln(tw, "NAMESPACE\tPOD NAME\tCONTAINER\tCPUl\tCPUr\tCLASS")
 	for _, v := range podData {
 		for _, c := range v.Containers {
-			fmt.Fprintln(tw, strings.Join([]string{v.NameSpace, v.PodName, c.Name}, "\t"))
+			fmt.Fprintln(tw, strings.Join([]string{v.NameSpace, v.PodName, c.Name, c.Limits.CPU.String(), c.Requests.CPU.String(), string(c.getQosClass())}, "\t"))
 
 		}
 	}
