@@ -1,0 +1,15 @@
+env:
+  - GO111MODULE=on
+builds:
+  - main: main.go
+    binary: kubectl-podqos
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+archives:
+  - format: tar.gz
+    replacements:
+      amd64: 64-bit
+      darwin: macOS
